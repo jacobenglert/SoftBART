@@ -165,7 +165,11 @@ class Forest {
 
   /* Forest(Rcpp::List hypers_); */
   Forest(Rcpp::List hypers_, Rcpp::List opts_);
+  Forest(Rcpp::List hypers_, 
+         Rcpp::List opts_, 
+         Rcpp::List saved_forests_);
   ~Forest();
+  
   // arma::vec predict(const arma::mat& X);
   arma::mat do_gibbs(const arma::mat& X,
                      const arma::vec& Y,
@@ -178,14 +182,24 @@ class Forest {
   arma::umat get_tree_counts();
   void set_sigma(double sigma);
   int num_gibbs;
+  arma::vec do_predict(const arma::mat& X);
   arma::vec predict_iteration(const arma::mat& X, int r_ter);
+  arma::mat predict_all(const arma::mat& X);
   double get_sigma();
   void set_s(const arma::vec& s_);
-  arma::vec do_predict(const arma::mat& X);
+  
   double get_sigma_mu();
+  Rcpp::List get_hypers();
+  Rcpp::List get_opts();
+  Rcpp::List get_saved_forests();
 
 };
 
+Rcpp::List serialize_node(Node* node);
+Rcpp::List serialize_forests(const std::vector<std::vector<Node*>>& saved_forests);
+
+Node* deserialize_node(const Rcpp::List& node_);
+std::vector<Node*> deserialize_forest(const Rcpp::List& forest_);
 
 Opts InitOpts(int num_burn, int num_thin, int num_save, int num_print,
               bool update_sigma_mu, bool update_s, bool update_alpha,

@@ -34,7 +34,7 @@ mu_y    <- mean(Y)
 sd_y    <- sd(Y)
 Y_scale <- (Y - mu_y) / sd_y
 
-hypers <- Hypers(X, Y_scale, normalize_Y = FALSE)
+hypers <- Hypers(X, Y_scale, normalize_Y = FALSE, num_tree = 5)
 opts   <- Opts()
 
 my_forest <- MakeForest(hypers, opts)
@@ -64,17 +64,24 @@ run_vc_bart <- function(forest, y, X, M, num_burn, num_save, num_thin) {
     beta_out[i,] <- beta
     sigma_out[i] <- sigma
   }
-  return(list(alpha = alpha_out, beta = beta_out, sigma = sigma_out))
+  return(list(alpha = alpha_out, beta = beta_out, sigma = sigma_out, forest = forest))
 }
 
 fitted_vc <- run_vc_bart(my_forest, Y_scale, X, M, 1000, 1000, 1)
-rmse <- function(x, y) sqrt(mean((x-y)^2))
-rmse(M * colMeans(fitted_vc$beta) * sd_y, mu)
-plot(M * colMeans(fitted_vc$beta) * sd_y, mu)
 
-mu_hat_burn <- my_forest$do_gibbs_weighted(X, Y_scale / M, M^2, X, 1000)
-mu_hat_save <- my_forest$do_gibbs_weighted(X, Y_scale / M, M^2, X, 1000)
+saved_forests <- fitted_vc$forest$get_saved_forests()
+saved_hypers <- fitted_vc$forest$get_hypers()
+saved_opts <- fitted_vc$forest$get_opts()
 
-head(mu_hat_save)
+saved_fit <- list(hypers = saved_hypers, opts = saved_opts, forests = saved_forests)
+write_rds(saved_fit, here::here('test.rds'))
+saved_fit <- read_rds(here::here('test.rds'))
 
-plot(M * colMeans(fitted_vc$beta), mu)
+mf <- Module(module = "mod_forest", PACKAGE = "SoftBart")
+
+forest2 <- new(Forest, saved_fit$hypers, saved_fit$opts, saved_fit$forests)
+
+
+
+rowMeans(forest2$predict_all(head(X)))
+rowMeans(fitted_vc$forest$predict_all(head(X)))

@@ -17,6 +17,37 @@ Forest::Forest(Rcpp::List hypers_, Rcpp::List opts_) : hypers(hypers_), opts(opt
   tree_counts = zeros<umat>(hypers.s.size(), hypers.num_tree);
 }
 
+Forest::Forest(Rcpp::List hypers_, 
+               Rcpp::List opts_, 
+               Rcpp::List saved_forests_) 
+  : hypers(hypers_), opts(opts_) {
+  // Deserialize each saved forest and add to saved_forests
+  saved_forests.resize(saved_forests_.size());
+  for (size_t i = 0; i < saved_forests_.size(); ++i) {
+    saved_forests[i] = deserialize_forest(Rcpp::as<Rcpp::List>(saved_forests_[i]));
+  }
+  
+  // Assuming saved_forests is non-empty, set trees to the last forest
+  if (!saved_forests.empty()) {
+    trees = saved_forests.back();  // Set trees to the last element of saved_forests
+    // tree_counts = get_tree_counts();
+  } else {
+    stop("No saved forests provided.");
+    // // If no saved forests are provided, initialize trees as per the original logic
+    // trees.resize(hypers.num_tree);
+    // for(int i = 0; i < hypers.num_tree; i++) {
+    //   trees[i] = new Node();
+    //   trees[i]->Root(hypers);
+    //   // Optionally generate the full tree
+    //   // trees[i]->GenTree(hypers);
+    // num_gibbs = 0;  // Set or load this as needed
+    // tree_counts = arma::zeros<arma::umat>(hypers.s.size(), hypers.num_tree);
+    }
+}
+  
+
+
+
 Forest::~Forest() {
   for(int i = 0; i < trees.size(); i++) {
     delete trees[i];
@@ -1778,13 +1809,31 @@ arma::mat Forest::do_gibbs(const arma::mat& X, const arma::vec& Y,
 
 }
 
+// Make predictions for a given posterior sample
 arma::vec Forest::predict_iteration(const arma::mat& X, int r_iter) {
   int cpp_iter = r_iter - 1;
   if(r_iter > saved_forests.size())
     stop("Specified iteration exceeds number of saved trees");
   return predict(saved_forests[cpp_iter], X, hypers);
-} 
+}
 
+// Make predictions for all available posterior samples
+arma::mat Forest::predict_all(const arma::mat& X) {
+  int num_save = saved_forests.size();
+  if (num_save == 0) {
+    stop("No saved forests available for prediction.");
+  }
+  
+  arma::mat preds(X.n_rows, num_save);
+  
+  for (int i = 0; i < num_save; i++) {
+    preds.col(i) = predict(saved_forests[i], X, hypers);
+  }
+  
+  return (preds);
+}
+
+// Perform a single MCMC iteration of weighted SoftBart 
 arma::mat Forest::do_gibbs_weighted(const arma::mat& X, const arma::vec& Y,
                                     const arma::vec& weights,
                                     const arma::mat& X_test, int num_iter) {
@@ -1817,15 +1866,18 @@ arma::mat Forest::do_gibbs_weighted(const arma::mat& X, const arma::vec& Y,
 
 }
 
+// Set split probabilities vector
 void Forest::set_s(const arma::vec& s_) {
   hypers.s = s_;
   hypers.logs = log(s_);
 }
 
+// Get split probabilities vector
 void Forest::set_sigma(double s) {
   hypers.sigma = s;
 }
 
+// Get error variance
 double Forest::get_sigma() {
   return hypers.sigma;
 }
@@ -1845,6 +1897,7 @@ arma::umat Forest::get_tree_counts() {
   return tree_counts;
 }
 
+// Make predictions for the current iteration
 arma::vec Forest::do_predict(const arma::mat& X) {
   return predict(trees, X, hypers);
 }
@@ -1852,12 +1905,158 @@ arma::vec Forest::do_predict(const arma::mat& X) {
 double Forest::get_sigma_mu() {
   return hypers.sigma_mu;
 }
+
+// Retrieve all hyperparameters in their current state
+Rcpp::List Forest::get_hypers() {
+  Rcpp::List hypers_;
+  
+  hypers_["alpha"] = hypers.alpha;
+  hypers_["beta"] = hypers.beta;
+  hypers_["gamma"] = hypers.gamma;
+  hypers_["sigma"] = hypers.sigma;
+  hypers_["sigma_mu"] = hypers.sigma_mu;
+  hypers_["sigma_mu_hat"] = hypers.sigma_mu_hat;
+  hypers_["shape"] = hypers.shape;
+  hypers_["width"] = hypers.width;
+  hypers_["num_tree"] = hypers.num_tree;
+  hypers_["sigma_hat"] = hypers.sigma_hat;
+  hypers_["alpha_scale"] = hypers.alpha_scale;
+  hypers_["alpha_shape_1"] = hypers.alpha_shape_1;
+  hypers_["alpha_shape_2"] = hypers.alpha_shape_2;
+  hypers_["tau_rate"] = hypers.tau_rate;
+  hypers_["num_tree_prob"] = hypers.num_tree_prob;
+  hypers_["temperature"] = hypers.temperature;
+  
+  hypers_["group"] = hypers.group;  // arma::uvec
+  hypers_["s"] = hypers.s;          // arma::vec
+  hypers_["logs"] = hypers.logs;    // arma::vec
+  hypers_["rho_propose"] = hypers.rho_propose;  // arma::vec
+  
+  // Handling std::vector<std::vector<unsigned int>>
+  Rcpp::List group_to_vars_list(hypers.group_to_vars.size());
+  for (size_t i = 0; i < hypers.group_to_vars.size(); i++) {
+    group_to_vars_list[i] = Rcpp::wrap(hypers.group_to_vars[i]);
+  }
+  hypers_["group_to_vars"] = group_to_vars_list;
+  
+  return hypers_;
+}
+
+// Retrieve all options
+Rcpp::List Forest::get_opts() {
+  Rcpp::List opts_;
+  
+  opts_["num_burn"] = opts.num_burn;
+  opts_["num_thin"] = opts.num_thin;
+  opts_["num_save"] = opts.num_save;
+  opts_["num_print"] = opts.num_print;
+  opts_["update_sigma_mu"] = opts.update_sigma_mu;
+  opts_["update_s"] = opts.update_s;
+  opts_["update_alpha"] = opts.update_alpha;
+  opts_["update_beta"] = opts.update_beta;
+  opts_["update_gamma"] = opts.update_gamma;
+  opts_["update_tau"] = opts.update_tau;
+  opts_["update_tau_mean"] = opts.update_tau_mean;
+  opts_["update_num_tree"] = opts.update_num_tree;
+  opts_["update_sigma"] = opts.update_sigma;
+  opts_["cache_trees"] = opts.cache_trees;
+  
+  return opts_;
+}
+
+// Convert an Rcpp tree into an R list
+Rcpp::List serialize_node(Node* node) {
+  if (!node) return Rcpp::List();  // Return an empty list for NULL nodes
+  
+  Rcpp::List node_;
+  node_["is_leaf"] = node->is_leaf;
+  node_["is_root"] = node->is_root;
+  node_["var"] = node->var;
+  node_["val"] = node->val;
+  node_["lower"] = node->lower;
+  node_["upper"] = node->upper;
+  node_["tau"] = node->tau;
+  node_["mu"] = node->mu;
+  node_["current_weight"] = node->current_weight;
+  
+  // Recursively serialize child nodes
+  // Check pointers before recursion
+  if (node->left != NULL && node->left != node) {
+    node_["left"] = serialize_node(node->left);
+  } else {
+    node_["left"] = R_NilValue;  // R's NULL
+  }
+  if (node->right != NULL && node->right != node) {
+    node_["right"] = serialize_node(node->right);
+  } else {
+    node_["right"] = R_NilValue;
+  }
+  
+  return node_;
+}
+
+// Convert a vector of Rcpp forests into a list of R list forests
+Rcpp::List serialize_forests(const std::vector<std::vector<Node*>>& saved_forests) {
+  Rcpp::List forests_(saved_forests.size());
+  
+  for (size_t i = 0; i < saved_forests.size(); ++i) {
+    Rcpp::List trees_(saved_forests[i].size());
+    for (size_t j = 0; j < saved_forests[i].size(); ++j) {
+      trees_[j] = serialize_node(saved_forests[i][j]);
+    }
+    forests_[i] = trees_;
+  }
+  
+  return forests_;
+}
+
+// Retrieve saved Rcpp forests and covert to R list
+Rcpp::List Forest::get_saved_forests() {
+  return serialize_forests(saved_forests);
+}
+
+// Convert an R list tree to an Rcpp tree
+Node* deserialize_node(const Rcpp::List& node_) {
+  if (node_.size() == 0) return NULL;  // Base case for recursion
+  
+  Node* node = new Node();
+  node->is_leaf = Rcpp::as<bool>(node_["is_leaf"]);
+  node->is_root = Rcpp::as<bool>(node_["is_root"]);
+  node->var = Rcpp::as<int>(node_["var"]);
+  node->val = Rcpp::as<double>(node_["val"]);
+  node->lower = Rcpp::as<double>(node_["lower"]);
+  node->upper = Rcpp::as<double>(node_["upper"]);
+  node->tau = Rcpp::as<double>(node_["tau"]);
+  node->mu = Rcpp::as<double>(node_["mu"]);
+  node->current_weight = Rcpp::as<double>(node_["current_weight"]);
+  
+  node->left = deserialize_node(Rcpp::as<Rcpp::List>(node_["left"]));
+  node->right = deserialize_node(Rcpp::as<Rcpp::List>(node_["right"]));
+  
+  if (node->left) node->left->parent = node;
+  if (node->right) node->right->parent = node;
+  
+  return node;
+}
+
+// Convert an R list forest to an Rcpp forest
+std::vector<Node*> deserialize_forest(const Rcpp::List& forest_) {
+  std::vector<Node*> forest(forest_.size());
+  for (int i = 0; i < forest_.size(); ++i) {
+    forest[i] = deserialize_node(Rcpp::as<Rcpp::List>(forest_[i]));
+  }
+  return forest;
+}
+
+
+// Create Rcpp Forest module
 RCPP_MODULE(mod_forest) {
 
   class_<Forest>("Forest")
 
     // .constructor<Rcpp::List>()
     .constructor<Rcpp::List, Rcpp::List>()
+    .constructor<Rcpp::List, Rcpp::List, Rcpp::List>()
     .method("do_gibbs", &Forest::do_gibbs)
     .method("get_s", &Forest::get_s)
     .method("do_gibbs_weighted", &Forest::do_gibbs_weighted)
@@ -1869,6 +2068,10 @@ RCPP_MODULE(mod_forest) {
     .method("do_predict", &Forest::do_predict)
     .method("get_tree_counts", &Forest::get_tree_counts)
     .method("predict_iteration", &Forest::predict_iteration)
+    .method("predict_all", &Forest::predict_all)
+    .method("get_hypers", &Forest::get_hypers)
+    .method("get_opts", &Forest::get_opts)
+    .method("get_saved_forests", &Forest::get_saved_forests)
     .field("num_gibbs", &Forest::num_gibbs);
 
 }
