@@ -4,7 +4,7 @@
 \alias{MakeForest}
 \title{Create an Rcpp_Forest Object}
 \usage{
-MakeForest(hypers, opts, warn = TRUE)
+MakeForest(hypers, opts, warn = TRUE, saved_forests = NULL)
 }
 \arguments{
 \item{hypers}{A list of hyperparameter values obtained from \code{Hypers()} function}
@@ -12,6 +12,8 @@ MakeForest(hypers, opts, warn = TRUE)
 \item{opts}{A list of MCMC chain settings obtained from \code{Opts()} function}
 
 \item{warn}{If \code{TRUE}, reminds the user to normalize their design matrix when interacting with a forest object.}
+
+\item{saved_forests}{An (optional) list of forest objects saved with \code{forest$get_saved_forests()} from a previously fit Rcpp_Forest object.}
 }
 \value{
 Returns an object of type \code{Rcpp_Forest}. If \code{forest} is an
@@ -37,9 +39,17 @@ Returns an object of type \code{Rcpp_Forest}. If \code{forest} is an
   \item \code{forest$get_tree_counts()} returns a matrix with a column for
   each predictor and a row for each tree that counts the number of times each
   predictor is used in each tree at the current state of \code{forest}.
+  \item \code{forest$get_saved_forests()} returns a list of lists containing 
+  information about all of the trees from each iteration in the posterior. 
+  Can be used to recreate the underlying C++ object by supplying the result 
+  to another \code{MakeForest} call.
   \item \code{forest$predict_iteration(X, i)} returns the predictions from a
   matrix \code{X} of predictors at iteration \code{i}. Requires that \code{opts$cache_trees =
   TRUE} in \code{MakeForest(hypers, opts)}.
+  \item \code{forest$predict_all(X)} returns a matrix of predictions from 
+  a matrix \code{X} of predictors for all iterations, where the columns
+  represent the posterior samples. Requires that \code{opts$cache_trees = TRUE} 
+  in \code{MakeForest(hypers, opts)}.
   \item \code{forest$set_s(s)} sets the splitting probabilities of the forest
   to \code{s}.
   \item \code{forest$set_sigma(x)} sets the error standard deviation of the
@@ -49,7 +59,7 @@ Returns an object of type \code{Rcpp_Forest}. If \code{forest} is an
 }
 }
 \description{
-Make an object of type \code{Rcpp_Fores}t, which can be used to embed a soft
+Make an object of type \code{Rcpp_Forest}, which can be used to embed a soft
 BART model into other models. Some examples are given in the package
 vignette.
 }

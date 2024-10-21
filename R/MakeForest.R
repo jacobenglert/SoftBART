@@ -7,6 +7,7 @@
 #' @param hypers A list of hyperparameter values obtained from \code{Hypers()} function
 #' @param opts A list of MCMC chain settings obtained from \code{Opts()} function
 #' @param warn If \code{TRUE}, reminds the user to normalize their design matrix when interacting with a forest object.
+#' @param saved_forests An (optional) list of forest objects saved with \code{forest$get_saved_forests()} from a previously fit Rcpp_Forest object.
 #'
 #' @return Returns an object of type \code{Rcpp_Forest}. If \code{forest} is an
 #'   \code{Rcpp_Forest} object then it has the following methods.
@@ -31,9 +32,17 @@
 #'   \item \code{forest$get_tree_counts()} returns a matrix with a column for
 #'   each predictor and a row for each tree that counts the number of times each
 #'   predictor is used in each tree at the current state of \code{forest}.
+#'   \item \code{forest$get_saved_forests()} returns a list of lists containing 
+#'   information about all of the trees from each iteration in the posterior. 
+#'   Can be used to recreate the underlying C++ object by supplying the result 
+#'   to another \code{MakeForest} call.
 #'   \item \code{forest$predict_iteration(X, i)} returns the predictions from a
 #'   matrix \code{X} of predictors at iteration \code{i}. Requires that \code{opts$cache_trees =
 #'   TRUE} in \code{MakeForest(hypers, opts)}.
+#'   \item \code{forest$predict_all(X)} returns a matrix of predictions from 
+#'   a matrix \code{X} of predictors for all iterations, where the columns
+#'   represent the posterior samples. Requires that \code{opts$cache_trees = TRUE} 
+#'   in \code{MakeForest(hypers, opts)}.
 #'   \item \code{forest$set_s(s)} sets the splitting probabilities of the forest
 #'   to \code{s}.
 #'   \item \code{forest$set_sigma(x)} sets the error standard deviation of the
@@ -48,13 +57,13 @@
 #' my_forest <- MakeForest(Hypers(X,Y), Opts())
 #' mu_hat <- my_forest$do_gibbs(X,Y,X,200)
 #' }
-MakeForest <- function(hypers, opts, warn = TRUE, trees = NULL) {
+MakeForest <- function(hypers, opts, warn = TRUE, saved_forests = NULL) {
   if(warn) {
     warning("Reminder: make sure to normalize the columns of your design matrix to lie between 0 and 1 when running the Bayesian backfitting algorithm or using do_predict(). THIS IS YOUR RESPONSIBILITY, YOU WILL GET NONSENSE ANSWERS IF YOU DON'T DO THIS. Set warn = FALSE to disable this warning.") 
   }
   mf <- Module(module = "mod_forest", PACKAGE = "SoftBart")
   
   # Plant forest from existing trees, if provided
-  if (is.null(trees)) forest <- new(mf$Forest, hypers, opts)
-  else if (is.list(trees)) forest <- new(mf$Forest, hypers, opts, trees)
+  if (is.null(saved_forests)) forest <- new(mf$Forest, hypers, opts)
+  else if (is.list(saved_forests)) forest <- new(mf$Forest, hypers, opts, saved_forests)
 }
