@@ -1,6 +1,6 @@
 #' Create an Rcpp_Forest Object
 #' 
-#' Make an object of type \code{Rcpp_Fores}t, which can be used to embed a soft
+#' Make an object of type \code{Rcpp_Forest}, which can be used to embed a soft
 #' BART model into other models. Some examples are given in the package
 #' vignette.
 #'
@@ -48,11 +48,13 @@
 #' my_forest <- MakeForest(Hypers(X,Y), Opts())
 #' mu_hat <- my_forest$do_gibbs(X,Y,X,200)
 #' }
-MakeForest <- function(hypers, opts, forests = NULL, warn = TRUE) {
+MakeForest <- function(hypers, opts, warn = TRUE, trees = NULL) {
   if(warn) {
     warning("Reminder: make sure to normalize the columns of your design matrix to lie between 0 and 1 when running the Bayesian backfitting algorithm or using do_predict(). THIS IS YOUR RESPONSIBILITY, YOU WILL GET NONSENSE ANSWERS IF YOU DON'T DO THIS. Set warn = FALSE to disable this warning.") 
   }
-  mf <- Module(module = "mod_forest", PACKAGE = "SoftBartFork")
-  if (is.null(forests)) forest <- new(mf$Forest, hypers, opts)
-  else if (is.list(forests)) forest <- new(mf$Forest, hypers, opts, forests)
+  mf <- Module(module = "mod_forest", PACKAGE = "SoftBart")
+  
+  # Plant forest from existing trees, if provided
+  if (is.null(trees)) forest <- new(mf$Forest, hypers, opts)
+  else if (is.list(trees)) forest <- new(mf$Forest, hypers, opts, trees)
 }
